@@ -1,0 +1,9 @@
+[package]
+name = "grogu-animatronic"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gilrs = { version = "0.10.0", default-features=false, features = ["xinput"] }
+serial = "0.4.0"
+serialport = "4.2.0"

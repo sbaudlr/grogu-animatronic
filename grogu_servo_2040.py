@@ -1,103 +1,10 @@
+import sys
 import time
-from machine import I2C
 from pimoroni import Analog, AnalogMux, Button
 from plasma import WS2812
-from servo import Servo, servo2040
+from servo import Servo, servo2040, Calibration
 
-from machine import mem32,mem8,Pin
-
-class i2c_peripheral:
-	"""
-	Taken from https://forums.raspberrypi.com/viewtopic.php?t=302978#p1823668
-	"""
-
-	I2C0_BASE = 0x40044000
-	I2C1_BASE = 0x40048000
-	IO_BANK0_BASE = 0x40014000
-	
-	mem_rw =  0x0000
-	mem_xor = 0x1000
-	mem_set = 0x2000
-	mem_clr = 0x3000
-	
-	IC_CON = 0
-	IC_TAR = 4
-	IC_SAR = 8
-	IC_DATA_CMD = 0x10
-	IC_RAW_INTR_STAT = 0x34
-	IC_RX_TL = 0x38
-	IC_TX_TL = 0x3C
-	IC_CLR_INTR = 0x40
-	IC_CLR_RD_REQ = 0x50
-	IC_CLR_TX_ABRT = 0x54
-	IC_ENABLE = 0x6c
-	IC_STATUS = 0x70
-	
-	def write_reg(self, reg, data, method=0):
-		mem32[ self.i2c_base | method | reg] = data
-		
-	def set_reg(self, reg, data):
-		self.write_reg(reg, data, method=self.mem_set)
-		
-	def clr_reg(self, reg, data):
-		self.write_reg(reg, data, method=self.mem_clr)
-				
-	def __init__(self, i2cID = 0, sda=0,  scl=1, peripheralAddress=0x41):
-		self.scl = scl
-		self.sda = sda
-		self.peripheralAddress = peripheralAddress
-		self.i2c_ID = i2cID
-		if self.i2c_ID == 0:
-			self.i2c_base = self.I2C0_BASE
-		else:
-			self.i2c_base = self.I2C1_BASE
-		
-		# 1 Disable DW_apb_i2c
-		self.clr_reg(self.IC_ENABLE, 1)
-		# 2 set peripheral address
-		# clr bit 0 to 9
-		# set peripheral address
-		self.clr_reg(self.IC_SAR, 0x1ff)
-		self.set_reg(self.IC_SAR, self.peripheralAddress &0x1ff)
-		# 3 write IC_CON  7 bit, enable in peripheral-only
-		self.clr_reg(self.IC_CON, 0b01001001)
-		# set SDA PIN
-		mem32[ self.IO_BANK0_BASE | self.mem_clr |  ( 4 + 8 * self.sda) ] = 0x1f
-		mem32[ self.IO_BANK0_BASE | self.mem_set |  ( 4 + 8 * self.sda) ] = 3
-		# set SLA PIN
-		mem32[ self.IO_BANK0_BASE | self.mem_clr |  ( 4 + 8 * self.scl) ] = 0x1f
-		mem32[ self.IO_BANK0_BASE | self.mem_set |  ( 4 + 8 * self.scl) ] = 3
-		# 4 enable i2c 
-		self.set_reg(self.IC_ENABLE, 1)
-
-
-	def anyRead(self):
-		status = mem32[ self.i2c_base | self.IC_RAW_INTR_STAT] & 0x20
-		if status :
-			return True
-		return False
-
-	def put(self, data):
-		# reset flag       
-		self.clr_reg(self.IC_CLR_TX_ABRT,1)
-		status = mem32[ self.i2c_base | self.IC_CLR_RD_REQ]
-		mem32[ self.i2c_base | self.IC_DATA_CMD] = data  & 0xff
-
-	def any(self):
-		# get IC_STATUS
-		status = mem32[ self.i2c_base | self.IC_STATUS]
-		# check RFNE receive fifio not empty
-		if (status &  8) :
-			return True
-		return False
-	
-	def get(self):
-		if not self.any():
-			return None
-		data = []
-		while self.any():
-			data.append(mem32[ self.i2c_base | self.IC_DATA_CMD] & 0xff)
-		return data
+from machine import Pin, UART
 
 """
 Control software for a Grogu animatronic based around the Pimoroni Servo 2040 board.
@@ -105,22 +12,78 @@ Control software for a Grogu animatronic based around the Pimoroni Servo 2040 bo
 
 POWER_INDICATOR_LED = 0
 STARTUP_INDICATOR_LED = 1
-I2C_INDICATOR_LED = 2
+BUST_STATE_INDICATOR_LED = 2
 LED_BRIGHTNESS = 0.3
-MODE_SELECT_PIN = servo2040.SENSOR_1_ADDR
+CALIBRATION_SELECT_PIN = servo2040.SENSOR_1_ADDR
+MOTOR_DISABLE_SELECT_PIN = servo2040.SENSOR_6_ADDR
+
+CALIBRATION_PLUS_PIN_SMALL = servo2040.SENSOR_2_ADDR
+CALIBRATION_MINUS_PIN_SMALL = servo2040.SENSOR_3_ADDR
+CALIBRATION_PLUS_PIN_LARGE = servo2040.SENSOR_4_ADDR
+CALIBRATION_MINUS_PIN_LARGE = servo2040.SENSOR_5_ADDR
+CALIBRATION_STEP_SMALL = 100
+CALIBRATION_STEP_LARGE = 20
+CALIBRATION_STEP_DELAY = 0.1
+
+MAGIC_HEADER = [0x04, 0x0c, 0x08, 0x0e]
+COMMAND_SERVO_POSITION = [0x05, 0x08]
+PACKET_SIZE = 16
+
+def mapFromTo(val,originalMin,originalMax,newMin,newMax):
+   y=(val-originalMin)/(originalMax-originalMin)*(newMax-newMin)+newMin
+   return y
 
 def set_led_colour(leds, led: int, r: int, g: int, b: int):
 	leds.set_rgb(led, (int)(r * LED_BRIGHTNESS), (int)(g * LED_BRIGHTNESS), (int)(b * LED_BRIGHTNESS))
 
 def read_servo_position(bus, leds):
-	set_led_colour(leds, I2C_INDICATOR_LED, 0, 0, 255)
+	set_led_colour(leds, BUST_STATE_INDICATOR_LED, 0, 0, 255)
 	try:
-		return bus.get()
-	except:
-		set_led_colour(leds, I2C_INDICATOR_LED, 255, 0, 0)
-		print("[", time.time(), "] Error reading from i2c bus")
+		data = bus.readline()
+		if data == None:
+			return None
+		if len(data) != PACKET_SIZE:
+			# print("Size is wrong ", len(data))
+			return None
+		# print([hex(i) for i in data])
+		# Must start with all 1s
+		if data[0] != 0xff:
+			# print("First bit is wrong")
+			return None
+		# Must end with newline
+		if data[PACKET_SIZE - 1] != 0x0a:
+			# print("Last bit is wrong")
+			return None
+		# Check header
+		for i in range(len(MAGIC_HEADER)):
+			if data[1 + i] != MAGIC_HEADER[i]:
+				# print("Header is wrong")
+				return None
+		# Check command
+		for i in range(len(COMMAND_SERVO_POSITION)):
+			if data[1 + len(MAGIC_HEADER) + i] != COMMAND_SERVO_POSITION[i]:
+				# print("Command is wrong")
+				return None
+		# Return data bits
+		# print("Good data")
+		return data[-3:-1]
+	except Exception as e:
+		set_led_colour(leds, BUST_STATE_INDICATOR_LED, 255, 0, 0)
+		print("[", time.time(), "] Error reading from uart ", e)
 		time.sleep(2)
 		return None
+
+def panic(leds):
+	while not user_sw.raw():
+		for i in range(0, servo2040.NUM_LEDS):
+			set_led_colour(leds, i, 255, 0, 0)
+			time.sleep(0.1)
+		time.sleep(1)
+		for i in range(0, servo2040.NUM_LEDS):
+			set_led_colour(leds, i, 0, 0, 0)
+			time.sleep(0.1)
+		time.sleep(1)
+	sys.exit(1)
 
 # Create the LED bar, using PIO 1 and State Machine 0
 led_bar = WS2812(servo2040.NUM_LEDS, 1, 0, servo2040.LED_DATA)
@@ -129,8 +92,11 @@ user_sw = Button(servo2040.USER_SW)
 # Start updating the LED bar
 led_bar.start()
 
-# Indicate that power on
+# Indicate that power is on
 set_led_colour(led_bar, POWER_INDICATOR_LED, 0, 255, 0)
+
+# uart=UART(0, tx=Pin(16), rx=Pin(17), baudrate=9600, timeout=100, timeout_char=100, parity=1, stop=2)
+uart=UART(0, tx=Pin(16), rx=Pin(17), rxbuf=10*PACKET_SIZE, txbuf=10*PACKET_SIZE, bits=8, baudrate=9600, timeout=100, timeout_char=100, parity=None, stop=1)
 
 # Configure analog mux
 sen_adc = Analog(servo2040.SHARED_ADC)
@@ -140,49 +106,99 @@ sensor_addrs = list(range(servo2040.SENSOR_1_ADDR, servo2040.SENSOR_6_ADDR + 1))
 for addr in sensor_addrs:
     mux.configure_pull(addr, Pin.PULL_DOWN)
 
-# Create a list of servos for pins 1 to 11 (inclusive).
+sen_calibration_pot = Analog(servo2040.ADC0)
+
+# Create a list of servos for pins 1 to 12 (inclusive).
 START_PIN = servo2040.SERVO_1
 END_PIN = servo2040.SERVO_12
 servos = [Servo(i) for i in range(START_PIN, END_PIN + 1)]
 NUM_SERVOS = len(servos)
+servoRanges = [
+	[servos[i].min_value(), servos[i].max_value()] for i in range(NUM_SERVOS)
+]
+# cal = Calibration()
+# cal.apply_two_pairs(1000, 2000, -180, 180)
+# servos[0].frequency(300)
+# servos[0].calibration(cal)
+
+if len(servoRanges) != NUM_SERVOS:
+	panic(led_bar)
 
 print("Hello")
 
-# Home all servos
-for s in servos:
-	s.enable()
-time.sleep(2)
-print("To Max")
-for s in servos:
-	s.to_max()
-time.sleep(2)
-print("To Min")
-for s in servos:
-	s.to_min()
-time.sleep(2)
-print("To Mid")
-for s in servos:
-	s.to_mid()
-time.sleep(2)
+calibrationMode = False
+motorsEnabled = True
 
-mux.select(MODE_SELECT_PIN)
+mux.select(MOTOR_DISABLE_SELECT_PIN)
 if round(sen_adc.read_voltage(), 3) > 3:
-	for i in range(1, servo2040.NUM_LEDS):
-		set_led_colour(led_bar, i, 200, 0, 255)
-	exit(0)
+	motorsEnabled = False
 
-i2c = i2c_peripheral(0, sda=20, scl=21, peripheralAddress=8)
+mux.select(CALIBRATION_SELECT_PIN)
+if round(sen_adc.read_voltage(), 3) > 3:
+	calibrationMode = True
+	for i in range(1, servo2040.NUM_LEDS):
+		set_led_colour(led_bar, i, 0, 0, 200)
+
+if motorsEnabled:
+	# Home all servos
+	for s in servos:
+		s.enable()
+	time.sleep(2)
+	for s in servos:
+		s.to_mid()
+	time.sleep(2)
+
+if calibrationMode and motorsEnabled:
+	val = servos[0].mid_value()
+	prevVal = val
+	step_small = (servos[0].max_value() - servos[0].min_value()) / CALIBRATION_STEP_SMALL
+	step_large = (servos[0].max_value() - servos[0].min_value()) / CALIBRATION_STEP_LARGE
+	while not user_sw.raw():
+		mux.select(CALIBRATION_PLUS_PIN_SMALL)
+		cal_plus_small = round(sen_adc.read_voltage(), 3) > 3
+		mux.select(CALIBRATION_MINUS_PIN_SMALL)
+		cal_minus_small = round(sen_adc.read_voltage(), 3) > 3
+		mux.select(CALIBRATION_PLUS_PIN_LARGE)
+		cal_plus_large = round(sen_adc.read_voltage(), 3) > 3
+		mux.select(CALIBRATION_MINUS_PIN_LARGE)
+		cal_minus_large = round(sen_adc.read_voltage(), 3) > 3
+
+		if cal_plus_small == True:
+			val += step_small
+		if cal_minus_small == True:
+			val -= step_small
+		if cal_plus_large == True:
+			val += step_large
+		if cal_minus_large == True:
+			val -= step_large
+
+		if val > servos[0].max_value():
+			val = servos[0].max_value()
+		if val < servos[0].min_value():
+			val = servos[0].min_value()
+		
+		if val != prevVal:
+			servos[0].value(val)
+			print(servos[0].pulse())
+			prevVal = val
+			time.sleep(CALIBRATION_STEP_DELAY)
 
 # Indicate that we've reached main loop
 set_led_colour(led_bar, STARTUP_INDICATOR_LED, 200, 0, 255)
 
 while not user_sw.raw():
-	position = read_servo_position(i2c, led_bar)
+	position = read_servo_position(uart, led_bar)
 	if position is None:
 		continue
+	print([hex(i) for i in position])
 	if position[0] > NUM_SERVOS - 1:
 		continue
-	servos[position[0]].value(position[1])
+	if motorsEnabled:
+		servo = servos[position[0]]
+		servo_min = servo.min_value()
+		servo_max = servo.max_value()
+		val = mapFromTo(position[1], 0, 255, 1000, 2000)
+		servos[position[0]].pulse(val)
 
 for s in servos:
 	s.disable()
