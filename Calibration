@@ -1,0 +1,42 @@
+Mouth Open: 1480
+Mouth Closed: 1380
+
+EarBR Up: 1240
+EarBR Down:1620
+
+EarTR Forwards: 940
+EarTR Backwards: 1820
+
+EarBL Up: 1660
+EarBL Down: 1280
+
+Ear TL Forwards: 2140
+Ear TL Backwards: 1300
+
+EyeTL (On Grogu's Right) Open: 1720
+EyeTL (On Grogu's Right) Closed: 1200
+
+EyeBL (On Grogu's Right) Open: 1280
+EyeBL (On Grogu's Right) Closed: 1520
+
+EyeTR (On Grogu's Left) Open: 1440
+EyeTR (On Grogu's Left) Closed: 1760
+
+EyeBR (On Grogu's Left) Open: 1760
+EyeBR (On Grogu's Left) Closed: 1400
+
+Torso Left: 1940
+Torso Right: 640
+
+NeckL Left:
+NeckL Right: 
+
+NeckR Left:
+NeckR Right: 
+
+Left Analog Trigger = Open eyes
+Right Analog Trigger = Close eyes
+Right Bumper = Mouth open full
+Left Bumper = Mouth open half
+Right Stick Forward/Backward = Ears Forward/backward
+Right Stick Left/Right = Ears Up/Down
