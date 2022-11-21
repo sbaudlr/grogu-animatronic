@@ -29,6 +29,16 @@ MAGIC_HEADER = [0x04, 0x0c, 0x08, 0x0e]
 COMMAND_SERVO_POSITION = [0x05, 0x08]
 PACKET_SIZE = 16
 
+SERVO_MOUTH = 0
+SERVO_EYE_BL = 1
+SERVO_EYE_BR = 2
+SERVO_EYE_TL = 3
+SERVO_EYE_TR = 4
+SERVO_EAR_BL = 5
+SERVO_EAR_BR = 6
+SERVO_EAR_TL = 7
+SERVO_EAR_TR = 8
+
 def mapFromTo(val,originalMin,originalMax,newMin,newMax):
    y=(val-originalMin)/(originalMax-originalMin)*(newMax-newMin)+newMin
    return y
@@ -113,15 +123,29 @@ START_PIN = servo2040.SERVO_1
 END_PIN = servo2040.SERVO_12
 servos = [Servo(i) for i in range(START_PIN, END_PIN + 1)]
 NUM_SERVOS = len(servos)
-servoRanges = [
+CALIBRATION = [
 	[servos[i].min_value(), servos[i].max_value()] for i in range(NUM_SERVOS)
 ]
-# cal = Calibration()
-# cal.apply_two_pairs(1000, 2000, -180, 180)
-# servos[0].frequency(300)
-# servos[0].calibration(cal)
 
-if len(servoRanges) != NUM_SERVOS:
+CALIBRATION[SERVO_MOUTH] = [1380, 1480]
+CALIBRATION[SERVO_EYE_BL] = [1280, 1720]
+CALIBRATION[SERVO_EYE_BR] = [1400, 1760]
+CALIBRATION[SERVO_EYE_TL] = [1200, 1720]
+CALIBRATION[SERVO_EYE_TR] = [1440, 1760]
+CALIBRATION[SERVO_EAR_TL] = [1300, 2140]
+CALIBRATION[SERVO_EAR_TR] = [940, 1820]
+CALIBRATION[SERVO_EAR_BL] = [1280, 1660]
+CALIBRATION[SERVO_EAR_BR] = [1240, 1620]
+
+for i in range(len(CALIBRATION)):
+	cal = Calibration()
+	cal.apply_two_pairs(CALIBRATION[i][0], CALIBRATION[i][1], 0, 90)
+	servos[i].calibration(cal)
+
+# Mouth
+servos[SERVO_MOUTH].frequency(300)
+
+if len(CALIBRATION) != NUM_SERVOS:
 	panic(led_bar)
 
 print("Hello")
@@ -194,10 +218,9 @@ while not user_sw.raw():
 	if position[0] > NUM_SERVOS - 1:
 		continue
 	if motorsEnabled:
-		servo = servos[position[0]]
-		servo_min = servo.min_value()
-		servo_max = servo.max_value()
-		val = mapFromTo(position[1], 0, 255, 1000, 2000)
+		servo_min = CALIBRATION[position[0]][0]
+		servo_max = CALIBRATION[position[0]][1]
+		val = mapFromTo(position[1], 0, 255, servo_min, servo_max)
 		servos[position[0]].pulse(val)
 
 for s in servos:
