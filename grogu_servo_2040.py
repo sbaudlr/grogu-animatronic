@@ -105,7 +105,6 @@ led_bar.start()
 # Indicate that power is on
 set_led_colour(led_bar, POWER_INDICATOR_LED, 0, 255, 0)
 
-# uart=UART(0, tx=Pin(16), rx=Pin(17), baudrate=9600, timeout=100, timeout_char=100, parity=1, stop=2)
 uart=UART(0, tx=Pin(16), rx=Pin(17), rxbuf=10*PACKET_SIZE, txbuf=10*PACKET_SIZE, bits=8, baudrate=9600, timeout=100, timeout_char=100, parity=None, stop=1)
 
 # Configure analog mux
@@ -121,10 +120,10 @@ sen_calibration_pot = Analog(servo2040.ADC0)
 # Create a list of servos for pins 1 to 12 (inclusive).
 START_PIN = servo2040.SERVO_1
 END_PIN = servo2040.SERVO_12
-servos = [Servo(i) for i in range(START_PIN, END_PIN + 1)]
-NUM_SERVOS = len(servos)
+SERVOS = [Servo(i) for i in range(START_PIN, END_PIN + 1)]
+NUM_SERVOS = len(SERVOS)
 CALIBRATION = [
-	[servos[i].min_value(), servos[i].max_value()] for i in range(NUM_SERVOS)
+	[500, 2500] for _ in range(NUM_SERVOS)
 ]
 
 CALIBRATION[SERVO_MOUTH] = [1380, 1480]
@@ -137,16 +136,16 @@ CALIBRATION[SERVO_EAR_TR] = [940, 1820]
 CALIBRATION[SERVO_EAR_BL] = [1280, 1660]
 CALIBRATION[SERVO_EAR_BR] = [1240, 1620]
 
-for i in range(len(CALIBRATION)):
-	cal = Calibration()
-	cal.apply_two_pairs(CALIBRATION[i][0], CALIBRATION[i][1], 0, 90)
-	servos[i].calibration(cal)
-
-# Mouth
-servos[SERVO_MOUTH].frequency(300)
-
 if len(CALIBRATION) != NUM_SERVOS:
 	panic(led_bar)
+
+for i in range(len(CALIBRATION)):
+	cal = Calibration()
+	cal.apply_two_pairs(CALIBRATION[i][0], CALIBRATION[i][1], -90, 90)
+	SERVOS[i].calibration(cal)
+
+# Mouth
+SERVOS[SERVO_MOUTH].frequency(300)
 
 print("Hello")
 
@@ -165,18 +164,20 @@ if round(sen_adc.read_voltage(), 3) > 3:
 
 if motorsEnabled:
 	# Home all servos
-	for s in servos:
+	for s in SERVOS:
 		s.enable()
+		time.sleep(0.1)
 	time.sleep(2)
-	for s in servos:
+	for s in SERVOS:
 		s.to_mid()
+		time.sleep(0.1)
 	time.sleep(2)
 
 if calibrationMode and motorsEnabled:
-	val = servos[0].mid_value()
+	val = SERVOS[0].mid_value()
 	prevVal = val
-	step_small = (servos[0].max_value() - servos[0].min_value()) / CALIBRATION_STEP_SMALL
-	step_large = (servos[0].max_value() - servos[0].min_value()) / CALIBRATION_STEP_LARGE
+	step_small = (SERVOS[0].max_value() - SERVOS[0].min_value()) / CALIBRATION_STEP_SMALL
+	step_large = (SERVOS[0].max_value() - SERVOS[0].min_value()) / CALIBRATION_STEP_LARGE
 	while not user_sw.raw():
 		mux.select(CALIBRATION_PLUS_PIN_SMALL)
 		cal_plus_small = round(sen_adc.read_voltage(), 3) > 3
@@ -196,14 +197,14 @@ if calibrationMode and motorsEnabled:
 		if cal_minus_large == True:
 			val -= step_large
 
-		if val > servos[0].max_value():
-			val = servos[0].max_value()
-		if val < servos[0].min_value():
-			val = servos[0].min_value()
+		if val > SERVOS[0].max_value():
+			val = SERVOS[0].max_value()
+		if val < SERVOS[0].min_value():
+			val = SERVOS[0].min_value()
 		
 		if val != prevVal:
-			servos[0].value(val)
-			print(servos[0].pulse())
+			SERVOS[0].value(val)
+			print(SERVOS[0].pulse())
 			prevVal = val
 			time.sleep(CALIBRATION_STEP_DELAY)
 
@@ -215,15 +216,18 @@ while not user_sw.raw():
 	if position is None:
 		continue
 	print([hex(i) for i in position])
-	if position[0] > NUM_SERVOS - 1:
+	index = position[0]
+	if index >= NUM_SERVOS:
 		continue
 	if motorsEnabled:
-		servo_min = CALIBRATION[position[0]][0]
-		servo_max = CALIBRATION[position[0]][1]
-		val = mapFromTo(position[1], 0, 255, servo_min, servo_max)
-		servos[position[0]].pulse(val)
+		servo_min = CALIBRATION[index][0]
+		servo_max = CALIBRATION[index][1]
+		val = mapFromTo(position[1], 0x00, 0xff, servo_min, servo_max)
+		if val <= 0:
+			continue
+		SERVOS[index].pulse(val)
 
-for s in servos:
+for s in SERVOS:
 	s.disable()
 for i in range(servo2040.NUM_LEDS):
 	set_led_colour(led_bar, i, 255, 0, 0)

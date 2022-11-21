@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use serialport::{Parity, StopBits};
+use serialport::{Parity, SerialPort, StopBits};
 
 const MAGIC_HEADER: [u8; 4] = [0x04, 0x0c, 0x08, 0x0e]; // 4, 12, 8, 14
 const COMMAND_SERVO_POSITION: [u8; 2] = [0x05, 0x08];
@@ -80,6 +80,13 @@ fn map_from_to(val: f32, original_min: f32, original_max: f32, new_min: f32, new
     (val - original_min) / (original_max - original_min) * (new_max - new_min) + new_min
 }
 
+fn send(port: &mut Box<dyn SerialPort>, buf: &mut [u8; PACKET_SIZE], servo: u8, position: u8) {
+    buf[SERVO_BYTE] = servo;
+    buf[DATA_BYTE] = position;
+    port.write_all(buf).unwrap();
+    port.flush().unwrap();
+}
+
 fn main() {
     use gilrs::{Button, Event, Gilrs};
 
@@ -107,42 +114,15 @@ fn main() {
     }
     buf[PACKET_SIZE - 1] = b"\n"[0];
 
-    buf[SERVO_BYTE] = SERVO_MOUTH;
-    buf[DATA_BYTE] = 0;
-    port.write_all(&buf).unwrap();
-    port.flush().unwrap();
-    buf[SERVO_BYTE] = SERVO_EYE_BL;
-    buf[DATA_BYTE] = 128;
-    port.write_all(&buf).unwrap();
-    port.flush().unwrap();
-    buf[SERVO_BYTE] = SERVO_EYE_BR;
-    buf[DATA_BYTE] = 128;
-    port.write_all(&buf).unwrap();
-    port.flush().unwrap();
-    buf[SERVO_BYTE] = SERVO_EYE_TL;
-    buf[DATA_BYTE] = 128;
-    port.write_all(&buf).unwrap();
-    port.flush().unwrap();
-    buf[SERVO_BYTE] = SERVO_EYE_TR;
-    buf[DATA_BYTE] = 128;
-    port.write_all(&buf).unwrap();
-    port.flush().unwrap();
-    buf[SERVO_BYTE] = SERVO_EAR_BL;
-    buf[DATA_BYTE] = 128;
-    port.write_all(&buf).unwrap();
-    port.flush().unwrap();
-    buf[SERVO_BYTE] = SERVO_EAR_BR;
-    buf[DATA_BYTE] = 128;
-    port.write_all(&buf).unwrap();
-    port.flush().unwrap();
-    buf[SERVO_BYTE] = SERVO_EAR_TL;
-    buf[DATA_BYTE] = 128;
-    port.write_all(&buf).unwrap();
-    port.flush().unwrap();
-    buf[SERVO_BYTE] = SERVO_EAR_TR;
-    buf[DATA_BYTE] = 128;
-    port.write_all(&buf).unwrap();
-    port.flush().unwrap();
+    send(&mut port, &mut buf, SERVO_MOUTH, 0);
+    send(&mut port, &mut buf, SERVO_EYE_BL, 128);
+    send(&mut port, &mut buf, SERVO_EYE_BR, 128);
+    send(&mut port, &mut buf, SERVO_EYE_TL, 128);
+    send(&mut port, &mut buf, SERVO_EYE_TR, 128);
+    send(&mut port, &mut buf, SERVO_EAR_BL, 128);
+    send(&mut port, &mut buf, SERVO_EAR_BR, 128);
+    send(&mut port, &mut buf, SERVO_EAR_TL, 128);
+    send(&mut port, &mut buf, SERVO_EAR_TR, 128);
 
     // Iterate over all connected gamepads
     for (_id, gamepad) in gilrs.gamepads() {
@@ -152,10 +132,10 @@ fn main() {
     let mut prev_state = GamepadState::default();
 
     loop {
-        let mut gamepad_state = prev_state.clone();
-
         // Examine new events
         while let Some(Event { id, event, time }) = gilrs.next_event() {
+            let mut gamepad_state = prev_state.clone();
+
             println!("{:?} New event from {}: {:?}", time, id, event);
             match event {
                 gilrs::EventType::ButtonPressed(button, _) => match button {
@@ -206,26 +186,16 @@ fn main() {
 
             if gamepad_state.right_bumper != prev_state.right_bumper {
                 if gamepad_state.right_bumper == true {
-                    buf[SERVO_BYTE] = SERVO_MOUTH;
-                    buf[DATA_BYTE] = MOUTH_OPEN;
+                    send(&mut port, &mut buf, SERVO_MOUTH, MOUTH_OPEN);
                 } else {
-                    buf[SERVO_BYTE] = SERVO_MOUTH;
-                    buf[DATA_BYTE] = MOUTH_CLOSED;
+                    send(&mut port, &mut buf, SERVO_MOUTH, MOUTH_CLOSED);
                 }
-
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
             } else if gamepad_state.left_bumper != prev_state.left_bumper {
                 if gamepad_state.left_bumper == true {
-                    buf[SERVO_BYTE] = SERVO_MOUTH;
-                    buf[DATA_BYTE] = MOUTH_MID;
+                    send(&mut port, &mut buf, SERVO_MOUTH, MOUTH_MID);
                 } else {
-                    buf[SERVO_BYTE] = SERVO_MOUTH;
-                    buf[DATA_BYTE] = MOUTH_CLOSED;
+                    send(&mut port, &mut buf, SERVO_MOUTH, MOUTH_CLOSED);
                 }
-
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
             }
 
             if gamepad_state.right_trigger != prev_state.right_trigger {
@@ -258,22 +228,10 @@ fn main() {
                     EYE_BOTTOM_RIGHT_CLOSED.into(),
                 ) as u8;
 
-                buf[SERVO_BYTE] = SERVO_EYE_TL;
-                buf[DATA_BYTE] = val_tl;
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
-                buf[SERVO_BYTE] = SERVO_EYE_BL;
-                buf[DATA_BYTE] = val_bl;
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
-                buf[SERVO_BYTE] = SERVO_EYE_TR;
-                buf[DATA_BYTE] = val_tr;
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
-                buf[SERVO_BYTE] = SERVO_EYE_BR;
-                buf[DATA_BYTE] = val_br;
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
+                send(&mut port, &mut buf, SERVO_EYE_TL, val_tl);
+                send(&mut port, &mut buf, SERVO_EYE_BL, val_bl);
+                send(&mut port, &mut buf, SERVO_EYE_TR, val_tr);
+                send(&mut port, &mut buf, SERVO_EYE_BR, val_br);
             } else if gamepad_state.left_trigger != prev_state.left_trigger {
                 let val_tl = map_from_to(
                     gamepad_state.left_trigger,
@@ -304,90 +262,43 @@ fn main() {
                     EYE_BOTTOM_RIGHT_OPEN.into(),
                 ) as u8;
 
-                buf[SERVO_BYTE] = SERVO_EYE_TL;
-                buf[DATA_BYTE] = val_tl;
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
-                buf[SERVO_BYTE] = SERVO_EYE_BL;
-                buf[DATA_BYTE] = val_bl;
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
-                buf[SERVO_BYTE] = SERVO_EYE_TR;
-                buf[DATA_BYTE] = val_tr;
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
-                buf[SERVO_BYTE] = SERVO_EYE_BR;
-                buf[DATA_BYTE] = val_br;
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
-            }
-        }
-
-        if gamepad_state.right_stick_x != prev_state.right_stick_x {
-            let mut val_tr = EAR_TOP_RIGHT_MID;
-            let mut val_tl = EAR_TOP_LEFT_MID;
-            if gamepad_state.right_stick_x >= 0.48 {
-                val_tr = EAR_TOP_RIGHT_BACKWARD;
-                val_tl = EAR_TOP_LEFT_BACKWARD;
-            } else if gamepad_state.right_stick_x <= -0.48 {
-                val_tr = EAR_TOP_RIGHT_FORWARD;
-                val_tl = EAR_TOP_LEFT_FORWARD;
+                send(&mut port, &mut buf, SERVO_EYE_TL, val_tl);
+                send(&mut port, &mut buf, SERVO_EYE_BL, val_bl);
+                send(&mut port, &mut buf, SERVO_EYE_TR, val_tr);
+                send(&mut port, &mut buf, SERVO_EYE_BR, val_br);
             }
 
-            buf[SERVO_BYTE] = SERVO_EAR_TR;
-            buf[DATA_BYTE] = val_tr;
-            port.write_all(&buf).unwrap();
-            port.flush().unwrap();
-            buf[SERVO_BYTE] = SERVO_EAR_TL;
-            buf[DATA_BYTE] = val_tl;
-            port.write_all(&buf).unwrap();
-            port.flush().unwrap();
-        }
-
-        if gamepad_state.right_stick_y != prev_state.right_stick_y {
-            let mut val_br = EAR_BOTTOM_RIGHT_MID;
-            let mut val_bl = EAR_BOTTOM_LEFT_MID;
-            if gamepad_state.right_stick_y >= 0.48 {
-                val_br = EAR_BOTTOM_RIGHT_UP;
-                val_bl = EAR_BOTTOM_LEFT_UP;
-            } else if gamepad_state.right_stick_y <= -0.48 {
-                val_br = EAR_BOTTOM_RIGHT_DOWN;
-                val_bl = EAR_BOTTOM_LEFT_DOWN;
-            }
-
-            buf[SERVO_BYTE] = SERVO_EAR_BR;
-            buf[DATA_BYTE] = val_br;
-            port.write_all(&buf).unwrap();
-            port.flush().unwrap();
-            buf[SERVO_BYTE] = SERVO_EAR_BL;
-            buf[DATA_BYTE] = val_bl;
-            port.write_all(&buf).unwrap();
-            port.flush().unwrap();
-        }
-
-        prev_state = gamepad_state;
-
-        // You can also use cached gamepad state
-        /*if let Some(gamepad) = active_gamepad.map(|id| gilrs.gamepad(id)) {
-            if gamepad.is_pressed(Button::RightTrigger) {
-                if !pressed {
-                    buf[PACKET_SIZE - 3] = 0x00;
-                    buf[PACKET_SIZE - 2] = 0xff;
-
-                    pressed = true;
-
-                    port.write_all(&buf).unwrap();
-                    port.flush().unwrap();
+            if gamepad_state.right_stick_x != prev_state.right_stick_x {
+                let mut val_tr = EAR_TOP_RIGHT_MID;
+                let mut val_tl = EAR_TOP_LEFT_MID;
+                if gamepad_state.right_stick_x >= 0.48 {
+                    val_tr = EAR_TOP_RIGHT_BACKWARD;
+                    val_tl = EAR_TOP_LEFT_BACKWARD;
+                } else if gamepad_state.right_stick_x <= -0.48 {
+                    val_tr = EAR_TOP_RIGHT_FORWARD;
+                    val_tl = EAR_TOP_LEFT_FORWARD;
                 }
-            } else if pressed {
-                buf[PACKET_SIZE - 3] = 0x00;
-                buf[PACKET_SIZE - 2] = 0x00;
 
-                pressed = false;
-
-                port.write_all(&buf).unwrap();
-                port.flush().unwrap();
+                send(&mut port, &mut buf, SERVO_EAR_TR, val_tr);
+                send(&mut port, &mut buf, SERVO_EAR_TL, val_tl);
             }
-        }*/
+
+            if gamepad_state.right_stick_y != prev_state.right_stick_y {
+                let mut val_br = EAR_BOTTOM_RIGHT_MID;
+                let mut val_bl = EAR_BOTTOM_LEFT_MID;
+                if gamepad_state.right_stick_y >= 0.48 {
+                    val_br = EAR_BOTTOM_RIGHT_UP;
+                    val_bl = EAR_BOTTOM_LEFT_UP;
+                } else if gamepad_state.right_stick_y <= -0.48 {
+                    val_br = EAR_BOTTOM_RIGHT_DOWN;
+                    val_bl = EAR_BOTTOM_LEFT_DOWN;
+                }
+
+                send(&mut port, &mut buf, SERVO_EAR_BR, val_br);
+                send(&mut port, &mut buf, SERVO_EAR_BL, val_bl);
+            }
+
+            prev_state = gamepad_state;
+        }
     }
 }
