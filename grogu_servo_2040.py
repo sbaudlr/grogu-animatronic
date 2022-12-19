@@ -30,14 +30,14 @@ COMMAND_SERVO_POSITION = [0x05, 0x08]
 PACKET_SIZE = 16
 
 SERVO_MOUTH = 0
-SERVO_EYE_BL = 1
-SERVO_EYE_BR = 2
-SERVO_EYE_TL = 3
-SERVO_EYE_TR = 4
-SERVO_EAR_BL = 5
-SERVO_EAR_BR = 6
-SERVO_EAR_TL = 7
-SERVO_EAR_TR = 8
+SERVO_EYE_BL = 2
+SERVO_EYE_BR = 3
+SERVO_EYE_TL = 4
+SERVO_EYE_TR = 5
+SERVO_EAR_BL = 6
+SERVO_EAR_BR = 7
+SERVO_EAR_TL = 8
+SERVO_EAR_TR = 9
 
 def mapFromTo(val,originalMin,originalMax,newMin,newMax):
    y=(val-originalMin)/(originalMax-originalMin)*(newMax-newMin)+newMin
@@ -223,6 +223,10 @@ while not user_sw.raw():
 		servo_min = CALIBRATION[index][0]
 		servo_max = CALIBRATION[index][1]
 		val = mapFromTo(position[1], 0x00, 0xff, servo_min, servo_max)
+		if val < servo_min:
+			val = servo_min
+		if val > servo_max:
+			val = servo_max
 		if val <= 0:
 			continue
 		SERVOS[index].pulse(val)

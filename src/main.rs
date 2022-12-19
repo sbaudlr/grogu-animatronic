@@ -64,14 +64,14 @@ const EAR_BOTTOM_RIGHT_DOWN: u8 = 255;
 const EAR_BOTTOM_RIGHT_MID: u8 = 128;
 
 const SERVO_MOUTH: u8 = 0;
-const SERVO_EYE_BL: u8 = 1;
-const SERVO_EYE_BR: u8 = 2;
-const SERVO_EYE_TL: u8 = 3;
-const SERVO_EYE_TR: u8 = 4;
-const SERVO_EAR_BL: u8 = 5;
-const SERVO_EAR_BR: u8 = 6;
-const SERVO_EAR_TL: u8 = 7;
-const SERVO_EAR_TR: u8 = 8;
+const SERVO_EYE_BL: u8 = 2;
+const SERVO_EYE_BR: u8 = 3;
+const SERVO_EYE_TL: u8 = 4;
+const SERVO_EYE_TR: u8 = 5;
+const SERVO_EAR_BL: u8 = 6;
+const SERVO_EAR_BR: u8 = 7;
+const SERVO_EAR_TL: u8 = 8;
+const SERVO_EAR_TR: u8 = 9;
 
 const SERVO_BYTE: usize = PACKET_SIZE - 3;
 const DATA_BYTE: usize = PACKET_SIZE - 2;
